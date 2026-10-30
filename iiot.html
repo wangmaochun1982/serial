@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>串口 SSE 网关实时监控</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 20px; background: #f4f6f9; color: #222; }
+    h2 { color: #333; }
+    .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+    input { padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px; flex: 1; min-width: 240px; font-family: monospace; }
+    button { padding: 6px 14px; border: none; border-radius: 4px; background: #007bff; color: #fff; cursor: pointer; }
+    button.connected { background: #6c757d; }
+    button.mes { background: #28a745; }
+    #status { font-weight: 700; padding: 4px 12px; border-radius: 4px; }
+    .on { background: #d4edda; color: #155724; }
+    .off { background: #f8d7da; color: #721c24; }
+    #log { background: #1e1e1e; color: #00ff66; padding: 15px; border-radius: 6px; height: 320px; overflow-y: auto; font-family: Consolas, monospace; font-size: 13px; margin-top: 12px; }
+    .log-item { margin-bottom: 4px; white-space: pre-wrap; word-break: break-all; }
+    .ts { color: #888; margin-right: 8px; }
+    .sys { color: #4fc3f7; }
+    .err { color: #ff6b6b; }
+    .serial { color: #aed581; }
+    .mes-ok { color: #69f0ae; }
+    .mes-fail { color: #ff8a80; }
+  </style>
+</head>
+<body>
+  <h2>串口数据实时监控网关 (SSE)</h2>
+
+  <div class="bar">
+    <label>网关地址:</label>
+    <input id="gwUrl" value="http://localhost:3000" />
+    <button id="btn">连接</button>
+    <span id="status" class="off">未连接</span>
+  </div>
+
+  <!-- 改为提交跳转到 result.html -->
+  <form id="mesForm" class="bar" action="result.html" method="GET">
+    <label>最新数据:</label>
+    <input type="text" id="serialInput" name="serialData" placeholder="等待串口数据..." required />
+    <button type="submit" class="mes">提交并看结果</button>
+  </form>
+
+  <div id="log"></div>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const gwInput = document.getElementById('gwUrl');
+    const btn = document.getElementById('btn');
+    const serialInput = document.getElementById('serialInput');
+    const mesForm = document.getElementById('mesForm');
+    let eventSource = null;
+
+    function appendLog(cls, msg) {
+      const t = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = 'log-item';
+      div.innerHTML = `<span class="ts">[${t}]</span><span class="${cls}">${msg}</span>`;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(connected) {
+      statusEl.textContent = connected ? '已连接网关' : '未连接';
+      statusEl.className = connected ? 'on' : 'off';
+      btn.textContent = connected ? '断开' : '连接';
+      btn.classList.toggle('connected', connected);
+    }
+
+    function connect() {
+      const base = gwInput.value.trim().replace(/\/+$/, '');
+      const url = base + '/api/stream';
+      appendLog('sys', '正在连接 SSE: ' + url);
+      eventSource = new EventSource(url);
+
+      eventSource.onopen = () => {
+        setStatus(true);
+        eventSource._errLogged = false;
+        appendLog('sys', 'SSE 通道已建立');
+      };
+
+      eventSource.onmessage = (e) => {
+        try {
+          const p = JSON.parse(e.data);
+          if (p.type === 'connected') {
+            appendLog('sys', '网关握手确认');
+          } else if (p.type === 'serial_data') {
+            appendLog('serial', 'RX > ' + p.data);
+            serialInput.value = p.data;
+          } else {
+            appendLog('sys', JSON.stringify(p));
+          }
+        } catch {
+          appendLog('serial', 'RAW > ' + e.data);
+          serialInput.value = e.data;
+        }
+      };
+
+      eventSource.onerror = () => {
+        setStatus(false);
+        if (!eventSource._errLogged) {
+          eventSource._errLogged = true;
+          appendLog('err', '连接异常/已断开，浏览器将在数秒后自动重连...');
+        }
+      };
+    }
+
+    function disconnect() {
+      if (eventSource) { eventSource.close(); eventSource = null; }
+      setStatus(false);
+    }
+
+    btn.addEventListener('click', () => {
+      if (eventSource) disconnect(); else connect();
+    });
+
+    // 提交前关闭 SSE 释放连接
+    mesForm.addEventListener('submit', () => {
+      disconnect();
+    });
+
+    connect();
+    serialInput.focus();
+  </script>
+</body>
+</html>

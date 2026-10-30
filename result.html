@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>称重结果提交 - MES</title>
+  <style>
+    body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 40px; background: #f4f6f9; color: #222; text-align: center; }
+    .card { background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 500px; margin: 0 auto; }
+    h2 { color: #28a745; margin-top: 0; }
+    .data-box { font-size: 24px; font-weight: bold; background: #e9ecef; padding: 15px; border-radius: 6px; margin: 20px 0; font-family: monospace; color: #333; }
+    .btn-group { margin-top: 25px; display: flex; gap: 10px; justify-content: center; }
+    button { padding: 10px 20px; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+    .btn-back { background: #007bff; color: #fff; }
+    .btn-back:hover { background: #0056b3; }
+    #mesStatus { margin: 15px 0; font-weight: bold; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>🎉 称重数据已捕获</h2>
+    <p>当前获取到的称重/条码数据为：</p>
+    <div class="data-box" id="resultData">正在解析...</div>
+    
+    <div id="mesStatus">正在向 MES 系统提交...</div>
+
+    <div class="btn-group">
+      <!-- 返回按钮：点击后跳回 iiot.html 准备接收下一个号码 -->
+      <button class="btn-back" onclick="goBack()">🔄 继续称下一个</button>
+    </div>
+  </div>
+
+  <script>
+    // ★ MES 提交地址
+    const MES_URL = 'http://mes-server/api/collect'; 
+
+    // 获取 URL 中的 serialData 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const serialData = urlParams.get('serialData') || '无有效数据';
+    
+    document.getElementById('resultData').textContent = serialData;
+    const statusEl = document.getElementById('mesStatus');
+
+    // 自动向 MES 发送 POST 请求
+    async function submitToMes() {
+      if (!serialData || serialData === '无有效数据') {
+        statusEl.textContent = '❌ 没有可提交的有效数据';
+        statusEl.style.color = 'red';
+        return;
+      }
+
+      try {
+        const res = await fetch(MES_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: serialData, timestamp: new Date().toISOString() })
+        });
+
+        if (res.ok) {
+          statusEl.textContent = '✅ 成功提交至 MES 系统！';
+          statusEl.style.color = '#28a745';
+        } else {
+          statusEl.textContent = `⚠️ MES 响应异常 (状态码: ${res.status})`;
+          statusEl.style.color = 'orange';
+        }
+      } catch (err) {
+        // 如果你的 MES 暂时还没搭建好，这里会捕获网络错误，方便本地联调
+        statusEl.textContent = '⚠️ 提交失败（可能MES接口未上线，数据仅供展示）';
+        statusEl.style.color = '#dc3545';
+      }
+    }
+
+    function goBack() {
+      // 跳回 iiot.html，浏览器会自动刷新并重新建立 SSE 连接等待下一个号码
+      window.location.href = 'http://10.2.1.244/iiot.html';
+    }
+
+    // 页面加载后自动触发提交
+    submitToMes();
+  </script>
+</body>
+</html>
